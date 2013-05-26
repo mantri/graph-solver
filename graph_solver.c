@@ -21,7 +21,7 @@
 typedef struct timeval timex;
 static timex start, end;
 timex checktime() {
-  struct timeval now;
+	struct timeval now;
 	gettimeofday(&now,NULL);
 	return now;
 }
@@ -39,7 +39,7 @@ long timelapse() {
 	endtime();
 	seconds  = end.tv_sec  - start.tv_sec;
 	useconds = end.tv_usec - start.tv_usec;
-	mtime = ((seconds) * 1000 + useconds/1000) + 0.5;
+	mtime = ((seconds) * 1000000 + useconds) + 0.5;
 	return mtime;
 }
 
@@ -48,7 +48,7 @@ long checktimelapse() {
 	timex a = checktime();
 	seconds  = a.tv_sec  - a.tv_sec;
 	useconds = a.tv_usec - a.tv_usec;
-	mtime = ((seconds) * 1000 + useconds/1000) + 0.5;
+	mtime = ((seconds) * 1000000 + useconds) + 0.5;
 	return mtime;
 }
 
@@ -148,7 +148,6 @@ int ab;
 int sign;
 work_queue* wqueue[24];
 int num_threads = 8;
-int sub_graph_count = 2;
 int coarse_size = 100;
 //double* Afeast = NULL; // Adjacency Matrix used for spectral bisection
 float* A = NULL; // Adjacency Matrix used for spectral bisection
@@ -171,9 +170,9 @@ MKL_INT* ifail;
 int should_die = 0;
 sem_t mis_sema;
 sem_t thread_sema;
-struct timeval color_tv1, color_tv2, mis_tv1, mis_tv2, match_tv1, match_tv2, coarsening_tv1, coarsening_tv2;
-double color_time[100], mis_time[10000], match_time[100], coarsening_time[100], color_total_time = 0.0, mis_total_time = 0.0, match_total_time = 0.0, coarsening_total_time = 0.0;
-int color_itr = 0, mis_itr = 0, match_itr = 0, coarsening_itr = 0;
+struct timeval color_tv1, color_tv2, mis_tv1, mis_tv2, match_tv1, match_tv2;
+double color_time[100], mis_time[10000], match_time[100], color_total_time = 0.0, mis_total_time = 0.0, match_total_time = 0.0;
+int color_itr = 0, mis_itr = 0, match_itr = 0;
 
 //QUEUE
 static queue* queue_init(pthread_mutex_t *mutex) {
@@ -329,9 +328,7 @@ void *thread_func(void *id) {
 		sem_wait(&wqueue[tid]->wq_sema);
 
 		if (should_die) {
-#if DEBUG > -1
 			printf("Thread[%d] exiting...\n", tid);
-#endif
 			pthread_exit(NULL);
 		}
 
@@ -1705,7 +1702,6 @@ void bisect(int a, int b){
 
 void coarsen(){
 	int level = 0;
-	gettimeofday(&coarsening_tv1, NULL);
 	while (cur_gr->num_v > coarse_size) {
 		level++;
 #if DEBUG > -1
@@ -1715,28 +1711,18 @@ void coarsen(){
 		printf("======= Before coloring ====== \n");
 		print_full_graph(cur_gr, 0);
 #endif
-		/* do graph coloring */
-		gettimeofday(&color_tv1, NULL);
 		color_graph(cur_gr); // do graph coloring 
-		gettimeofday(&color_tv2, NULL);
-		color_time[color_itr++] = (color_tv2.tv_usec - color_tv1.tv_usec) + (color_tv2.tv_sec - color_tv1.tv_sec)*1000000.0;
 #if DEBUG > 0
 		printf("======= After coloring ====== \n");
 		print_full_graph(cur_gr, 0);
 #endif
-		/* do maximal graph matching */
-		gettimeofday(&match_tv1, NULL);
 		maximal_matching(cur_gr); // do maximal graph matching 
-		gettimeofday(&match_tv2, NULL);
-		match_time[match_itr++] = (match_tv2.tv_usec - match_tv1.tv_usec) + (match_tv2.tv_sec - match_tv1.tv_sec)*1000000.0;
 #if DEBUG > 0
 		printf("======= After matching ====== \n");
 		print_full_graph(cur_gr, 1);
 #endif
 		cur_gr = create_next_level_graph(cur_gr); // create next level graph 
 	}
-	gettimeofday(&coarsening_tv2, NULL);
-	coarsening_time[coarsening_itr++] = (coarsening_tv2.tv_usec - coarsening_tv1.tv_usec) + (coarsening_tv2.tv_sec - coarsening_tv1.tv_sec)*1000000.0;
 	printf("======= Final Level Graph %d  Max Degree = %d ====== \n", level, cur_gr->max_degree);
 #if DEBUG > -1
 	print_full_graph(cur_gr, 1);
@@ -1745,8 +1731,11 @@ void coarsen(){
 
 void divide_graph(){
 	int i, j;
-	int num_levels = (int)  log2((double) sub_graph_count) ;
+	//int num_levels = (int)  Log2((long double) num_threads) ;
+	int num_levels = (int)  log2((double) num_threads) ;
+	//if (num_levels == 0) { num_levels = 1; }
 	printf("num_levels = %d\n", num_levels);
+	//int num_levels = 1;
 	int iter = 0;
 	int offset = 0;
 	long long time_coarsen = 0; 
@@ -1754,7 +1743,7 @@ void divide_graph(){
 	int a=0, b=0;
 	for(i=0; i<num_levels; i++){
 		iter = 1 << i;
-		offset = sub_graph_count / (1 << (i+1));
+		offset = num_threads / (1 << (i+1));
 		for(j=0; j < iter; j++){
 			qa = queue_init(&q_mutex_a);
 			qb = queue_init(&q_mutex_b);
@@ -1787,8 +1776,9 @@ void divide_graph(){
 			queue_free(qb, &q_mutex_b);
 		}
 	}
-	printf("time for coarsening = %ld ms\n", time_coarsen);
-	printf("time for bisect = %ld ms\n", time_eigen);
+	printf("time for coarsening = %ld\n", time_coarsen);
+	printf("time for bisect = %ld\n", time_eigen);
+
 }
 
 void *constructI(void *tid){
@@ -1817,61 +1807,60 @@ long double *x_old = NULL;
 int maxIts = 100000;
 int counter = 0;
 pthread_mutex_t counter_mutex;
-//pthread_mutex_t bar_mutex;
 pthread_barrier_t pbar;
 unsigned long long bar_ctr = 0;
 
 void *modifiedGS(void *thread_id) 
 {
-	int tid = *(int *)(thread_id);
-	int i, j, t;
-	int it = 0; 
-	long double diff;
-	long double error = 0.0;
-	long double thresh = 0.0001;
-	bool converged = false;
-	for (i = 0; i < graph_partitions[tid]->num_v; i++)
-		x[graph_partitions[tid]->vl[i].root_vid] = rand() % 10000;
-
-	while (it++ < maxIts)
-	{	
-		for (i = 0; i < graph_partitions[tid]->num_v; i++) {
-			int temp = 0;
-			int Aii = 0;
-			for (j = 0; j < graph_partitions[tid]->vl[i].neighbor_count; j++) {
-				int jj = graph_partitions[tid]->vl[i].neighbors[j].root_vid;
-				temp += graph_partitions[tid]->vl[i].neighbors[j].weight * x[jj];
-				Aii += graph_partitions[tid]->vl[i].neighbors[j].weight;
-			}
-			x[graph_partitions[tid]->vl[i].root_vid] = temp /Aii;
-		}
-		error = 0.0;
-		for (i = 0; i < graph_partitions[tid]->num_v; i++) {
-			int vi = graph_partitions[tid]->vl[i].root_vid;
-			error += (x[vi] - x_old[vi])*(x[vi] - x_old[vi]);
-			x_old[vi] = x[vi];
-		}
-
-		error = error/graph_partitions[tid]->num_v;
-		diff = sqrt(error);
-		//printf("tid: %d, Iteration %d, error = %Lf\n", tid, it, diff);
-
-		if (diff < thresh && converged == false) {
-			converged = true;
-			pthread_mutex_lock(&counter_mutex);
-			counter++;
-			pthread_mutex_unlock(&counter_mutex);
-		}
-
-		pthread_barrier_wait(&pbar);	
-
-		if (counter == num_threads)
-			break;
+  int tid = *(int *)(thread_id);
+  int i, j, t;
+  int it = 0; 
+  long double diff;
+  long double error = 0.0;
+  long double thresh = 0.0001;
+  bool converged = false;
+  for (i = 0; i < graph_partitions[tid]->num_v; i++)
+    x[graph_partitions[tid]->vl[i].root_vid] = rand() % 10000;
+  
+  while (it++ < maxIts)
+    {	
+      for (i = 0; i < graph_partitions[tid]->num_v; i++) {
+	int temp = 0;
+	int Aii = 0;
+	for (j = 0; j < graph_partitions[tid]->vl[i].neighbor_count; j++) {
+	  int jj = graph_partitions[tid]->vl[i].neighbors[j].root_vid;
+	  temp += graph_partitions[tid]->vl[i].neighbors[j].weight * x[jj];
+	  Aii += graph_partitions[tid]->vl[i].neighbors[j].weight;
 	}
-	printf("%d iterations to converge with convergence value of %Lf\n", it, diff);
-
-	sem_post(&thread_sema);
-	return NULL;
+	x[graph_partitions[tid]->vl[i].root_vid] = temp /Aii;
+      }
+      error = 0.0;
+      for (i = 0; i < graph_partitions[tid]->num_v; i++) {
+	int vi = graph_partitions[tid]->vl[i].root_vid;
+	error += (x[vi] - x_old[vi])*(x[vi] - x_old[vi]);
+	x_old[vi] = x[vi];
+      }
+      
+      error = error/graph_partitions[tid]->num_v;
+      diff = sqrt(error);
+      //      printf("tid: %d, Iteration %d, error = %Lf\n", tid, it, diff);
+      
+      if (diff < thresh && converged == false) {
+	converged = true;
+	pthread_mutex_lock(&counter_mutex);
+	counter++;
+	pthread_mutex_unlock(&counter_mutex);
+      }
+      
+      pthread_barrier_wait(&pbar);	
+      
+      if (counter == num_threads)
+	break;
+    }
+  printf("%d iterations to converge with convergence value of %Lf\n", it, diff);
+  
+  sem_post(&thread_sema);
+  return NULL;
 }
 
 void solver() {
@@ -1879,69 +1868,67 @@ void solver() {
 	int k;
 	int tid;
 	pthread_mutex_init(&counter_mutex, NULL);    
-	//pthread_mutex_init(&bar_mutex, NULL);
 	pthread_barrier_init(&pbar, NULL, num_threads);
-	x_old = (long double *)malloc(root_num_vertices*sizeof(long double ));
-	x = (long double *)calloc(root_num_vertices, sizeof(long double ));
+	x_old = (long double *)malloc(root_num_vertices*sizeof(long double));
+	x = (long double *)calloc(root_num_vertices, sizeof(long double));
 
 #if OMP_PTHREADS == 1
 #pragma omp parallel for private (tid, i, j) num_threads(num_threads)
 	for (t = 0; t < num_threads; t++) {
-		int it = 0; 
-		long double diff;
-		long double thresh = 0.0001;
-		long double error = 0.0;
-		tid = omp_get_thread_num();
-		bool converged = false;
-
-		for (i = 0; i < graph_partitions[tid]->num_v; i++)
-			x[graph_partitions[tid]->vl[i].root_vid] = rand() % 10000;
-
-		while (it++ < maxIts)
-		{	
-			for (i = 0; i < graph_partitions[tid]->num_v; i++) {
-				int temp = 0;
-				int Aii = 0;
-				for (j = 0; j < graph_partitions[tid]->vl[i].neighbor_count; j++) {
-					int jj = graph_partitions[tid]->vl[i].neighbors[j].root_vid;
-					temp += graph_partitions[tid]->vl[i].neighbors[j].weight * x[jj];
-					Aii += graph_partitions[tid]->vl[i].neighbors[j].weight;
-				}
-				x[graph_partitions[tid]->vl[i].root_vid] = temp /Aii;
-
-			}
-			error = 0.0;
-			for (i = 0; i < graph_partitions[tid]->num_v; i++) {
-				int vi = graph_partitions[tid]->vl[i].root_vid;
-				error += ((x[vi] - x_old[vi])*(x[vi] - x_old[vi]));
-				x_old[vi] = x[vi];
-			}
-			error = error/graph_partitions[tid]->num_v;
-			diff = sqrt(error);
-
-			//printf("tid: %d, Iteration %d, error = %Lf\n", tid, it, diff);
-
-			if (diff < thresh && converged == false) {
-				converged = true;
-				pthread_mutex_lock(&counter_mutex);
-				counter++;
-				pthread_mutex_unlock(&counter_mutex);
-			}
-			pthread_barrier_wait(&pbar);	
-
-			if (counter == num_threads)
-				break;
-
+	  int it = 0; 
+	  long double diff;
+	  long double thresh = 0.0001;
+	  long double error = 0.0;
+	  tid = omp_get_thread_num();
+	  bool converged = false;
+	  
+	  for (i = 0; i < graph_partitions[tid]->num_v; i++)
+	    x[graph_partitions[tid]->vl[i].root_vid] = rand() % 10000;
+	  
+	  while (it++ < maxIts)
+	    {	
+	      for (i = 0; i < graph_partitions[tid]->num_v; i++) {
+		int temp = 0;
+		int Aii = 0;
+		for (j = 0; j < graph_partitions[tid]->vl[i].neighbor_count; j++) {
+		  int jj = graph_partitions[tid]->vl[i].neighbors[j].root_vid;
+		  temp += graph_partitions[tid]->vl[i].neighbors[j].weight * x[jj];
+		  Aii += graph_partitions[tid]->vl[i].neighbors[j].weight;
 		}
-		printf("%d iterations to converge with convergence value of %Lf\n", it, diff); 
+		x[graph_partitions[tid]->vl[i].root_vid] = temp /Aii;
+		
+	      }
+	      error = 0.0;
+	      for (i = 0; i < graph_partitions[tid]->num_v; i++) {
+		int vi = graph_partitions[tid]->vl[i].root_vid;
+		error += ((x[vi] - x_old[vi])*(x[vi] - x_old[vi]));
+		x_old[vi] = x[vi];
+	      }
+	      error = error/graph_partitions[tid]->num_v;
+	      diff = sqrt(error);
+	      
+	      //	      printf("tid: %d, Iteration %d, error = %Lf\n", tid, it, diff);
+	      
+	      if (diff < thresh && converged == false) {
+		converged = true;
+		pthread_mutex_lock(&counter_mutex);
+		counter++;
+		pthread_mutex_unlock(&counter_mutex);
+	      }
+	      pthread_barrier_wait(&pbar);	
+	      
+	      if (counter == num_threads)
+		break;
+	      
+	    }
+	  printf("%d iterations to converge with convergence value of %Lf\n", it, diff); 
 	}
 #else
 	for (i = 0; i < num_threads; i++) 
-		wq_add(wqueue[i], &modifiedGS);
+	  wq_add(wqueue[i], &modifiedGS);
 	for (i = 0; i < num_threads; i++)
-		sem_wait(&thread_sema);
+	  sem_wait(&thread_sema);
 #endif
-	//pthread_mutex_destroy(&bar_mutex);
 	pthread_mutex_destroy(&counter_mutex);
 	pthread_barrier_destroy(&pbar);
 }
@@ -1949,7 +1936,7 @@ void solver() {
 #if DEBUG > 2
 void fine_graph_partition_checker(){
 	int i, j, k;
-	for(i=0; i<sub_graph_count; i++){
+	for(i=0; i<num_threads; i++){
 		for(j=0; j<graph_partitions[i]->num_v; j++){
 			// Disjoint check
 			if(gr_root->vl[graph_partitions[i]->vl[j].root_vid].found != -1){
@@ -1982,14 +1969,13 @@ int main(int argc, char *argv[]) {
 #if OMP_PTHREADS == 1
 	omp = 1;
 #endif
-	if (argc < 4) {
-		printf("Usage: ./a.out <graph.txt> <num_threads> <coarse_size> <sub_graphs>\n");
+	if (argc < 3) {
+		printf("Usage: ./a.out <graph.txt> <num_threads> <coarse_size>\n");
 		exit (-1);
 	}
-	if (argc == 5) {
+	if (argc == 4) {
 		num_threads = atoi(argv[2]);
 		coarse_size = atoi(argv[3]);
-		sub_graph_count = atoi(argv[4]);
 		if (num_threads < 1) {
 			printf("specify at least 1 thread \n"); exit (-1);
 		}
@@ -1997,17 +1983,15 @@ int main(int argc, char *argv[]) {
 	}
 	// INIT
 	gr_root = create_graph();
-	graph_partitions = (graph**) calloc(sub_graph_count, sizeof(graph*));
+	graph_partitions = (graph**) calloc(num_threads, sizeof(graph*));
 	for (i = 0; i < num_threads; i++) {
 		wqueue[i] = wq_init();
 		thread_ids[i] = i;
-	}
-	for (i = 0; i < sub_graph_count; i++) 
 		graph_partitions[i] = NULL;
-
-#if OMP_PTHREADS != 1
+	}
+//#if OMP_PTHREADS != 1
 	setup_threads(num_threads);
-#endif
+//#endif
 	graph_partitions[0] = gr_root;
 	populate_graph(gr_root, argv[1]);
 	w = calloc(coarse_size, sizeof(float));
@@ -2021,8 +2005,9 @@ int main(int argc, char *argv[]) {
 
 #if OMP_PTHREADS == 1
 #pragma omp parallel for num_threads(num_threads)
-	for (i = 0; i < coarse_size; i++) 
+	for (i = 0; i < coarse_size; i++) {
 		I[coarse_size*i + i] = 1; 
+	}
 #elif OMP_PTHREADS == 0
 	for (j = 0; j < num_threads; j++) wq_add(wqueue[j], &constructI);
 	for (j = 0; j < num_threads; j++) sem_wait(&thread_sema);
@@ -2038,30 +2023,29 @@ int main(int argc, char *argv[]) {
 #endif
 
 	gettimeofday(&start_gs, NULL);
-	//solver();
+	solver();
 	gettimeofday(&end_gs, NULL);
 	time_gs = (end_gs.tv_sec - start_gs.tv_sec);
 	printf("modified GS time = %f\n", time_gs);
 
-#if OMP_PTHREADS != 1
+//#if OMP_PTHREADS != 1
 	should_die = 1;
 	for(i = 0; i < num_threads; i++)
 		sem_post(&wqueue[i]->wq_sema);
-#endif
+//#endif
 
-	// MLC Timing prints
-	for (i = 0; i < mis_itr; i++) mis_total_time += mis_time[i];
-	for (i = 0; i < color_itr; i++) color_total_time += color_time[i];
-	for (i = 0; i < match_itr; i++) match_total_time += match_time[i];
-	for (i = 0; i < coarsening_itr; i++) coarsening_total_time += coarsening_time[i];
-	mis_total_time = mis_total_time/1000.0;	
-	color_total_time = color_total_time/1000.0;	
-	match_total_time = match_total_time/1000.0;	
-	coarsening_total_time = coarsening_total_time/1000.0;	
-	printf("Coarsening time = %f ms\n", coarsening_total_time);
-	printf("MIS total time = %f ms\n", mis_total_time);
-	printf("Color total time = %f ms\n", color_total_time);
-	printf("Match total time = %f ms\n", match_total_time);
+	mis_total_time = mis_total_time/1000000.0;	
+	color_total_time = color_total_time/1000000.0;	
+	match_total_time = match_total_time/1000000.0;	
+
+	/*
+	   printf("Total time in sec = %f\n", total_time);
+	   printf("Read Input time in sec = %f\n", read_input_time);
+	   printf("Coarsening time in sec = %f\n", coarsening_time);
+	   printf("MIS total time in sec = %f\n", mis_total_time);
+	   printf("Color total time in sec = %f\n", color_total_time);
+	   printf("Match total time in sec = %f\n", match_total_time);
+	   */
 
 	free(w);
 	free(z);
