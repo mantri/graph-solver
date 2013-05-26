@@ -1,0 +1,19 @@
+The 3 source files are: mlgps.c, mlgps_mlcb.c, modifiedGS.c
+
+Each file has by default OMP_PTHREADS set to 1 meaning it'll compile to run with OpenMP parallelism. That can be switched to 0 to use pthreads instead.
+
+mlgps.c: Multilevel Graph Partition Implementation, including the solver. 
+
+mlgps_mlcb.c file has just coarsening and bisection and is there on profile for weak scaling.
+
+modifiedGS.c: Modified naive iterative Gauss Seidel solver
+
+nycgraph.gr: Newyork city road network graph.
+
+Usage: 
+
+./MLGPS <graph> <#threads> 1000
+
+./MLGPS_MLCB <graph> <#threads> 1000 <#parts>
+
+./MGS <graph> <#threads>
